@@ -1,0 +1,18 @@
+site_name: "Prácticas UD3"
+theme:
+  name: material
+  locale: "es"
+  palette: 
+    # Palette toggle for light mode
+    - scheme: default
+      toggle:
+        icon: material/brightness-7 
+        name: Cambiar a modo oscuro
+    # Palette toggle for dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Cambiar a modo light
+nav:
+    - Introducción: "index.md"
+    - Práctica 1: "Practica1.md"
