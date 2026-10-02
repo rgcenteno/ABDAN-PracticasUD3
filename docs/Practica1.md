@@ -83,4 +83,6 @@ Vamos a utilizar el **segundo método** para restaurar la "Segunda instantanea".
 
 3. Reinicia el sistema y comprueba que el nuevo volumen está montado.
 
-¡Felicidades! Has finalizado la práctica.
+¡Felicidades! Has finalizado la práctica. 
+
+Recuerda borrar todos los recursos creados para no consumir saldo de AWS
