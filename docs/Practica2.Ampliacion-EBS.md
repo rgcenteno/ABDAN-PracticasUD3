@@ -150,7 +150,7 @@ Vamos a ampliar el volumen secundario pasándolo de 10GB a 20GB. Antes de amplia
 
 ---
 
-## ## Parte 5. Ampliación del disco de arranque
+## Parte 5. Ampliación del disco de arranque
 
 De forma análoga al apartado 4, vamos a duplicar el almacenamiento del disco de arranque pasándolo de 8GB a 16GB. Antes de ampliarlo, haremos una copia de seguridad.
 
