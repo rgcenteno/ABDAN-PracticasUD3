@@ -114,7 +114,7 @@ Con estas características
 
 - AMI: Amazon Linux más actual que sea Apta para la capa gratuita
 
-- Instancia t3.micro
+- Instancia t{x}.micro de capa gratuita más actual
 
 - Utiliza el par de claves vockey
 
@@ -123,6 +123,8 @@ Con estas características
 - Asignación automática de IP pública: Habilitar
 
 - Deja el almacenamiento y el resto de parámetros por defecto y pulsa el botón Lanzar instancia.
+
+- Asocia a las dos primeras máquinas el rol LabInstanceProfile y a la máquina Backup el rol EMR_EC2_DefaultRole. En un **entorno real crearíamos un rol** para las máquinas con acceso a documentos y otro para la que sólo va a tener acceso a la parte de backup pero los laboratorios de AWS no nos dejan crear roles por lo que tenemos que conformarnos con los predefinidos.
 
 Todas deben pertenecer a la misma VPC y tener IP Pública. Par de claves vockey.
 
@@ -200,21 +202,153 @@ Las tres máquinas tendrán acceso.
 
 ### Paso 5. Crear EFS-Documentos
 
+#### Paso 1:
+
 - Nombre: EFS-Documentos
-- Asociar: SG-EFS-Documentos
 - Deshabilita las copias de seguridad automáticas para evitar cargos adicionales
 
 Resto de parámetros por defecto
+
+#### Paso 2:
+
+- Elegimos nuestra VPC y elegimos la subred privada. 
+- Sólo usamos ipv4 
+- Asociamos el grupo de seguridad SG-EFS-Backups. Con esto **securizamos a nivel de conexión el EFS**
+
+#### Paso 3:
+
+Vamos a seguir las recomendaciones de seguridad para proteger un sistema EFS. Para ello vamos a marcar las siguientes opciones:
+
+- Impedir el acceso raíz por defecto
+
+- Evitar el acceso anónimo
+
+- Aplicar el cifrado en tránsito para todos los clientes
+
+Se nos creará una política JSON. Esta política va a permitir conectarse a cualquier instancia que no sea anónima. Nosotros sólo vamos a querer que se puedan conectar las instancias EC2 con el Rol de IAM asociado `LabInstanceProfile`. Para conseguir esto tenemos que modificar el json generado en el statement que cuyo action es `elasticfilesystem:ClientWrite` y tiene una condición booleana llamada `elasticfilesystem:AccessedViaMountTarget` con valor `true`. En esa política veremos que el Principal será algo similar a esto:
+
+```json
+"Principal": {
+    "AWS": "*"
+}
+```
+
+Deberemos cambiarlo por el ARN del Rol IAM que está contenido dentro de LabInstanceProfile. 
+
+![image](imgs/instace-role-IAM-role.png)
+
+Para conocer ese ARN, abrimos la consola EC2 y escribimos el comando:
+
+```sh
+aws sts get-caller-identity
+```
+
+Nos devolverá un resultado parecido a éste:
+
+```json
+{
+    "UserId": "AROAZKKMNFFGGZLH45IBB:i-0b15f0dfd746aa0d1",
+    "Account": "640647244108",
+    "Arn": "arn:aws:sts::640647244108:assumed-role/LabRole/i-0b15f0dfd746aa0d1"
+}
+```
+
+Ese el ARN que deberemos pegar en nuestra política quedando dicha política así (hemos modificado la línea 9):
+
+```json
+{
+    "Version": "2012-10-17",
+    "Id": "efs-policy-wizard-b03eb5c8-3637-4ff2-b023-8223d07bcef1",
+    "Statement": [
+        {
+            "Sid": "efs-statement-solo-labrole",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::640647244108:role/LabRole"
+            },
+            "Action": "elasticfilesystem:ClientWrite",
+            "Resource": "arn:aws:elasticfilesystem:us-east-1:640647244108:file-system/fs-00a7abbeaf2dc7551",
+            "Condition": {
+                "Bool": {
+                    "elasticfilesystem:AccessedViaMountTarget": "true"
+                }
+            }
+        },
+        {
+            "Sid": "efs-statement-6917ef70-df8f-46db-8e1d-1c70e5e8844b",
+            "Effect": "Deny",
+            "Principal": {
+                "AWS": "*"
+            },
+            "Action": "*",
+            "Resource": "arn:aws:elasticfilesystem:us-east-1:640647244108:file-system/fs-00a7abbeaf2dc7551",
+            "Condition": {
+                "Bool": {
+                    "aws:SecureTransport": "false"
+                }
+            }
+        }
+    ]
+}
+```
+
+Esta política sigue teniendo un problema, cualquier Rol podrá montar el sistema de ficheros. Para evitar esto, vamos a añadir el permiso `elasticfilesystem:ClientMount` dentro de esta política (se ha añadido en la línea 13). Así sólo las máquinas con el Rol `LabRole` (o un instance profile que lo contenga como `LabInstaceProfile`) podrán montar este volumen en una máquina EC2.
+
+La política que quedará será parecida a esta (haz las modificaciones comentadas sobre la tuya ya que esta no funcionará si la copias y pegas directamente)
+
+```json
+{
+    "Version": "2012-10-17",
+    "Id": "efs-policy-wizard-b03eb5c8-3637-4ff2-b023-8223d07bcef1",
+    "Statement": [
+        {
+            "Sid": "efs-statement-solo-labrole",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::640647244108:role/LabRole"
+            },
+            "Action": [
+                "elasticfilesystem:ClientWrite",
+                "elasticfilesystem:ClientMount"
+            ],
+            "Resource": "arn:aws:elasticfilesystem:us-east-1:640647244108:file-system/fs-00a7abbeaf2dc7551",
+            "Condition": {
+                "Bool": {
+                    "elasticfilesystem:AccessedViaMountTarget": "true"
+                }
+            }
+        },
+        {
+            "Sid": "efs-statement-6917ef70-df8f-46db-8e1d-1c70e5e8844b",
+            "Effect": "Deny",
+            "Principal": {
+                "AWS": "*"
+            },
+            "Action": "*",
+            "Resource": "arn:aws:elasticfilesystem:us-east-1:640647244108:file-system/fs-00a7abbeaf2dc7551",
+            "Condition": {
+                "Bool": {
+                    "aws:SecureTransport": "false"
+                }
+            }
+        }
+    ]
+}
+```
+
+Con estas políticas hemos conseguido los siguiente:
+
+- El acceso debe realizarse a través de un Mount Target (`AccessedViaMountTarget`).
+- El tráfico debe ir cifrado (`tls`).
+- El cliente debe autenticarse mediante IAM (`iam`).
+- El principal autenticado debe ser el rol `LabRole`.
+- El rol tiene permisos de montaje (`ClientMount`) y escritura (`ClientWrite`).
 
  ---
 
 ### Paso 6. Crear EFS-Backups
 
-- Nombre: EFS-Backups
-- Asociar: SG-EFS-Backups
-- Deshabilita las copias de seguridad automáticas para evitar cargos adicionales
-
-Resto de parámetros por defecto
+Vamos a crear EFS-Backups basándonos en lo hecho con el EFS anterior pero permitiendo que se Monten y escriban tanto LabRole como el Instance Rol asociado a la máquina EC2-Backup01.
 
 ---
 
@@ -232,19 +366,17 @@ sudo yum install -y amazon-efs-utils
 
 ### En EC2-App01 y EC2-App02
 
-Fíjate en el punto 3.1 de este [tutorial](https://docs.aws.amazon.com/es_es/efs/latest/ug/wt1-getting-started.html) para obtener el nombre DNS del sistema EFS. Como usamos `amazon-efs-utils` también podrías poner sólo el ID del EFS.
+Fíjate en el punto 3.1 de este [tutorial](https://docs.aws.amazon.com/es_es/efs/latest/ug/wt1-getting-started.html) para obtener el nombre DNS del sistema EFS. Como usamos `amazon-efs-utils` también podrías poner sólo el ID del EFS. Fíjate que en comando añadimos `-o tls,iam` para obligar a usar TLS en la conexión y enviar los datos del Rol IAM asociado a la instancia
 
 ```sh
 # Crear directorio:
 sudo mkdir /documentos
 
 #Montar:
-sudo mount -t efs fs-id:/ /documentos
+sudo mount -t efs -o tls,iam fs-id:/ /documentos
 
 #Comprobar:
 df -h
-
----
 ```
 
 ### Prueba de funcionamiento

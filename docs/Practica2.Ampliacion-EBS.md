@@ -23,17 +23,17 @@ En esta práctica trabajaremos los siguientes contenidos:
 
 #### Características
 
-| Parámetro           | Valor               |
-| ------------------- | ------------------- |
-| AMI                 | Amazon Linux 2023   |
-| Tipo de instancia   | t2.micro o t3.micro |
-| Almacenamiento raíz | 8 GB gp3            |
-| Nombre              | EC2-EBS-LAB         |
-| Security Group      | Permitir SSH (22)   |
-| Par de claves       | vockey              |
-| VPC                 | Predeterminada      |
-| AZ y Subred         | Sin preferencias    |
-| Asignación IP       | Automática          |
+| Parámetro           | Valor                                  |
+| ------------------- | -------------------------------------- |
+| AMI                 | Amazon Linux 2023                      |
+| Tipo de instancia   | t{x}.micro de capa gratuíta más actual |
+| Almacenamiento raíz | 8 GB gp3                               |
+| Nombre              | EC2-EBS-LAB                            |
+| Security Group      | Permitir SSH (22)                      |
+| Par de claves       | vockey                                 |
+| VPC                 | Predeterminada                         |
+| AZ y Subred         | Sin preferencias                       |
+| Asignación IP       | Automática                             |
 
 #### Verificación
 
