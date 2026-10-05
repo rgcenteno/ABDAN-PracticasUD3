@@ -211,9 +211,9 @@ Resto de parámetros por defecto
 
 #### Paso 2:
 
-- Elegimos nuestra VPC y elegimos la subred privada. 
+- Elegimos nuestra VPC y elegimos la **subred privada**. 
 - Sólo usamos ipv4 
-- Asociamos el grupo de seguridad SG-EFS-Backups. Con esto **securizamos a nivel de conexión el EFS**
+- Asociamos el grupo de seguridad SG-EFS-Documentos. Con esto **securizamos a nivel de conexión el EFS**
 
 #### Paso 3:
 
@@ -252,6 +252,23 @@ Nos devolverá un resultado parecido a éste:
     "Arn": "arn:aws:sts::640647244108:assumed-role/LabRole/i-0b15f0dfd746aa0d1"
 }
 ```
+
+Ese ARN es un ARN temporal de STS. Si reiniciamos la consola o accedemos desde otro equipo, veremos que posiblemente hayamos perdido el acceso.
+
+Un ARN temporal de STS sigue el siguiente formato:
+
+`arn:aws:sts::<cuenta>:assumed-role/<nombre-Rol>/<Sesion-i>`
+
+Por lo tanto de este ejemplo podemos asumir:
+
+- Cuenta: 640647244108
+
+- Rol: LabRole
+
+- Sesión-i: i-0b15f0dfd746aa0d1
+
+El ARN permanente del rol LabRole sería el siguiente:
+`arn:aws:iam::640647244108:role/LabRole`
 
 Ese el ARN que deberemos pegar en nuestra política quedando dicha política así (hemos modificado la línea 9):
 
@@ -344,11 +361,23 @@ Con estas políticas hemos conseguido los siguiente:
 - El principal autenticado debe ser el rol `LabRole`.
 - El rol tiene permisos de montaje (`ClientMount`) y escritura (`ClientWrite`).
 
+Una cosa que tenemos que tener en cuenta. Cuando asumamos el Rol `LabRole`, vamos ver que tenemos el permiso `elasticfilesystem:ClientRootAccess`. Podemos comprobarlo creando un fichero con sudo y viendo que el dueño del archivo es root:root. En un sistema sin root squashing el usuario sería nobody.
+
+##### ¿Por qué tenemos Root Squashing pese a no dar el permiso en el recurso?
+
+Es debido a como funciona el sistema de permisos de IAM. El permiso no lo damos a nivel de Recurso pero tampoco lo negamos. 
+
+- Con un rol sin permiso explícito: no tenemos ClientRootAccess ya que nadie lo permite de forma explícita.
+
+- Con un rol con ese permiso: tendremos ClientRootAccess ya que no se deniega de forma explícita.
+
+La política predefinida para `LabRole` recibe el permiso mediante la política administrada del laboratorio (`VocLabPolicy1`) por lo que sí se comportará como si tuviera el permiso habilitado.
+
  ---
 
 ### Paso 6. Crear EFS-Backups
 
-Vamos a crear EFS-Backups basándonos en lo hecho con el EFS anterior pero permitiendo que se Monten y escriban tanto LabRole como el Instance Rol asociado a la máquina EC2-Backup01.
+Vamos a crear EFS-Backups basándonos en lo hecho con el EFS anterior pero permitiendo que se Monten y escriban tanto `LabRole` como el Instance Rol asociado a la máquina `EC2-Backup01`. Además el grupo de seguridad asociado al destino de montaje será `SG-EFS-Documentos`.
 
 ---
 
@@ -366,7 +395,9 @@ sudo yum install -y amazon-efs-utils
 
 ### En EC2-App01 y EC2-App02
 
-Fíjate en el punto 3.1 de este [tutorial](https://docs.aws.amazon.com/es_es/efs/latest/ug/wt1-getting-started.html) para obtener el nombre DNS del sistema EFS. Como usamos `amazon-efs-utils` también podrías poner sólo el ID del EFS. Fíjate que en comando añadimos `-o tls,iam` para obligar a usar TLS en la conexión y enviar los datos del Rol IAM asociado a la instancia
+Fíjate en el punto 3.1 de este [tutorial](https://docs.aws.amazon.com/es_es/efs/latest/ug/wt1-getting-started.html) para obtener el nombre DNS del sistema EFS. Como usamos `amazon-efs-utils` también podrías poner sólo el ID del EFS. Fíjate que en comando añadimos `-o tls,iam` para obligar a usar TLS en la conexión y enviar los datos del Rol IAM asociado a la instancia.
+
+> Ten en cuenta que si acabas de crear el sistema EFS es posible que tengas que esperar varios minutos para que el comando `mount`funcione incluso aunque en la consola se muestre el sistema EFS como `disponible`. Eso se debe a que las resoluciones DNS tardan varios minutos en propagarse.
 
 ```sh
 # Crear directorio:
@@ -375,8 +406,22 @@ sudo mkdir /documentos
 #Montar:
 sudo mount -t efs -o tls,iam fs-id:/ /documentos
 
-#Comprobar:
+#Comprobar: Debemos ver una entreada montada en /documentos
 df -h
+```
+
+### Creación de carpeta compartida
+
+Vamos a aprovechar que todas las máquinas EC2 con Amazon Linux crean por defecto un usuario ec2-user perteneciente a un grupo del mismo nombre para crear una carpeta compartida en la que podrá escribir el usuario ec2-user desde todas las máquinas.
+
+En un entorno de sistemas operativos en red con usuarios de red haríamos algo similar pero mucho más securizado.
+
+```sh
+# Creamos la carpeta como su (/documentos tiene como propietario a 
+# root:root y sólo el propietario puede escribir en ella)
+sudo mkdir /documentos/ec2-user
+
+sudo chown ec2-user:ec2-user /documentos/ec2-user
 ```
 
 ### Prueba de funcionamiento
