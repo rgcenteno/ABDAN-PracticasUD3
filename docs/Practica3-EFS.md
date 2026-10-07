@@ -1,4 +1,4 @@
-# Práctica AWS: Dos EFS compartidos selectivamente entre tres instancias EC2
+# Creación de dos EFS compartidos selectivamente entre tres instancias EC2
 
 ## Situación empresarial
 
@@ -124,7 +124,7 @@ Con estas características
 
 - Deja el almacenamiento y el resto de parámetros por defecto y pulsa el botón Lanzar instancia.
 
-- Asocia a las dos primeras máquinas el rol LabInstanceProfile y a la máquina Backup el rol EMR_EC2_DefaultRole. En un **entorno real crearíamos un rol** para las máquinas con acceso a documentos y otro para la que sólo va a tener acceso a la parte de backup pero los laboratorios de AWS no nos dejan crear roles por lo que tenemos que conformarnos con los predefinidos.
+- Asocia a las dos primeras máquinas el rol `LabInstanceProfile` y a la máquina Backup el rol `EMR_EC2_DefaultRole`. En un **entorno real crearíamos un rol** para las máquinas con acceso a documentos y otro para la que sólo va a tener acceso a la parte de backup pero los laboratorios de AWS no nos dejan crear roles por lo que tenemos que conformarnos con los predefinidos.
 
 Todas deben pertenecer a la misma VPC y tener IP Pública. Par de claves vockey.
 
@@ -363,25 +363,24 @@ Con estas políticas hemos conseguido los siguiente:
 
 Una cosa que tenemos que tener en cuenta. Cuando usemos una máquina EC2 que asuma el Rol `LabRole`, vamos ver que tenemos el permiso `elasticfilesystem:ClientRootAccess`. Podemos comprobarlo creando un fichero con sudo y viendo que el dueño del archivo es root:root. En un sistema sin root squashing el usuario sería nobody.
 
-##### ¿Por qué tenemos Root Squashing pese a no dar el permiso en el recurso?
+##### ¿Por qué podemos actuar como root (no_root_squashing) pese a no dar el permiso en el recurso?
 
 Según la [documentación de red y permisos de Amazon EFS](https://docs.aws.amazon.com/es_es/efs/latest/ug/accessing-fs-nfs-permissions.html#accessing-fs-nfs-permissions-root-user), por defecto, el "root squashing" está desactivado (`no_root_squash`).
 
 Esto significa que Amazon EFS trata nativamente a cualquier usuario con UID 0 (root) como el usuario administrador raíz y se salta las comprobaciones de permisos. 
 
-Para activar el root squashing (es decir, degradar al usuario root a un usuario anónimo sin privilegios), debemoss quitarle explícitamente el permiso `elasticfilesystem:ClientRootAccess`.
+Para activar el `root squashing` (es decir, degradar al usuario root a un usuario anónimo sin privilegios), debemoss quitarle explícitamente el permiso `elasticfilesystem:ClientRootAccess`.
 
-En realidad, al menos para un primer acceso en el que creemos estructuras de carpeta y asociemos permisos, es necesario tener acceso root ya que en el directorio / del EFS el usuario `root` es el propietario del recurso montado. Vamos a provechar esto cuando montemos por primera vez los EFS para crear las estructuras de carpetas y luego denegaremos explíticamente el root squashing. Recuerda que no en todos los sistemas de archivos en red es necesario deshabilitarlo, todo depende de la casuística que estemos implementando/trabajando.
+| Configuración en el Servidor                      | Usuario en el Cliente | UID enviado | UID con el que se escribe en el Servidor | ¿Tiene control total?                                     |
+| ------------------------------------------------- | --------------------- | ----------- | ---------------------------------------- | --------------------------------------------------------- |
+| **`root_squash`** *(Por defecto en NFS estándar)* | `root`                | `0`         | **`65534` (`nobody`)**                   | No, se le trata como un usuario invitado sin privilegios. |
+| **`no_root_squash`** *(Por defecto en AWS EFS)*   | `root`                | `0`         | **`0` (`root`)**                         | Sí, tiene acceso total como superusuario en el servidor.  |
+
+En realidad, al menos para un primer acceso en el que creemos estructuras de carpeta y asociemos permisos, es necesario tener acceso `root` ya que en el directorio / del EFS el usuario `root` es el propietario del recurso montado. Vamos a provechar esto cuando montemos por primera vez los EFS para crear las estructuras de carpetas y luego **denegaremos** explíticamente el root squashing. 
+
+Existe algunas casuísticas muy contadas no es necesario habilitar el root squashing pero en la mayoría de sistemas la recomendación es habilitarlo por defecto.
 
  ---
-
-### Paso 6. Crear EFS-Backups
-
-Vamos a crear EFS-Backups basándonos en lo hecho con el EFS anterior pero permitiendo que se monten y escriban tanto `LabRole` como el Instance Rol asociado a la máquina `EC2-Backup01`. Además el grupo de seguridad asociado al destino de montaje será `SG-EFS-Backups` para permitir la conexión tanto de las máquinas App como de la máquina Backup.
-
-En las políticas debemos dejar Montar y escribir en el sistema EFS tanto al rol `LabRole` como al rol `EMR_EC2_DefaultRole`.
-
----
 
 ## Fase 4: Instalar amazon-efs-utils
 
@@ -425,6 +424,8 @@ Por lo tanto sólo nos podremos conectar desde máquinas cuyo SG sea `SG-EC2-App
 
 ### En EC2-App01 y EC2-App02
 
+Monta la carpeta raíz del `EFS-Documentos` en las máquinas `EC2-App01` y `EC2-App02`.
+
 Fíjate en el punto 3.1 de este [tutorial](https://docs.aws.amazon.com/es_es/efs/latest/ug/wt1-getting-started.html) para obtener el nombre DNS del sistema `EFS-Documentos`. Como usamos `amazon-efs-utils` también podrías poner sólo el ID del EFS. Fíjate que en comando añadimos `-o tls,iam` para obligar a usar TLS en la conexión y enviar los datos del Rol IAM asociado a la instancia.
 
 > Ten en cuenta que si acabas de crear el sistema EFS es posible que tengas que esperar varios minutos para que el comando `mount`funcione incluso aunque en la consola se muestre el sistema EFS como `disponible`. Eso se debe a que las resoluciones DNS tardan varios minutos en propagarse.
@@ -467,27 +468,33 @@ sudo chmod 777 /documentos/compartida
 Con usuario `ec2-user` en máquina `Ec2-App01`
 
 ```sh
-echo "Manual de despliegue > /documentos/compartida/manual.txt
+echo "Manual de despliegue"" > /documentos/compartida/manual.txt
 # Listamos para comprobar que se ha creado el documento
 ls -l /documentos/compartida
 
 # Intentamos crear un fichero en documentacion, se espera error de permisos
 echo "Manual infraestructura" /documentos/documentacion/infraestructura.txt
 
-# Cambiamos al usuario documentador y creamos el fichero
+# Cambiamos al usuario documentador y creamos el fichero infraestructura y
+# el documento arquitectura
+
 su documentador
 echo "Manual infraestructura" > /documentos/documentacion/infraestructura.txt
+echo "Manual arquitectura" > /documentos/documentacion/arquitectura.txt
+
+# Comprobamos que se han creado los ficheros
 ls -l /documentos/documentacion
 ```
 
-Con usuario `ec2-user` en máquina `Ec2-App02`
+Ahora iniciamos sesión con el usuario `ec2-user` en la máquina `Ec2-App02`
 
 ```sh
 # Comprobamos que existen los ficheros de la carpeta compartida
-ls -l /documentacion
+# en modo lectura
+ls -l /documentos
 ```
 
-Veremos que están la carpeta compartida con propietario root:root y la carpeta documentacion con usuario y grupo numérico. Esto es porque al ser un usuario local de la máquina Ec2-App01, no tiene la información de dicho usuario. En un entorno de Sistema en red tipo LDAP o AD veríamos correctamente el nombre.
+Veremos que están la carpeta `compartida` con propietario root:root y la carpeta `documentacion` con usuario y grupo numérico. Esto es porque al ser un usuario local de la máquina Ec2-App01, no tiene la información de dicho usuario. En un entorno de Sistema en red tipo LDAP o AD veríamos correctamente el nombre.
 
 Mostramos el contenido del fichero `/documentos/compartida/manual.txt` y que también podemos leer el fichero `/documentos/documentacion/infraestructura.txt`
 
@@ -504,7 +511,21 @@ Ahora intentaremos crear un fichero en la subcapeta documentacion y obtendremos 
 touch /documentos/documentacion/test-permisos.txt
 ```
 
-Si todas las pruebas funcionaron correctamente, ya tenemos la estructura de carpetas montadas y podemos proceder a cerrar el acceso root. Para ello bastaría con **añadir** la siguiente política al EFS:
+Sin embargo si intentamos crear ese mismo fichero con sudo nos va a dejar
+
+```sh
+sudo touch /documentos/documentacion/test-permisos.txt
+```
+
+#### ¿Por qué hemos podido crear un fichero en una carpeta de sólo lectura?
+
+Al estar activado el `no_root_squashing`, cualquier root de una máquina local puede trabajar como `root` en las carpetas EFS. Esto implica que un usuario malicioso o un sistema infectado **podría cambiar permisos, cambiar propietarios o modificar y borrar el contenido de nuestro sistema de ficheros. Cuando trabajemos con EFS o con cualquier sistema NFS tenemos que evaluar si esta característica es necesario en nuestra implementación. 
+
+La recomendación habitual es habilitar el `root_squashing`. 
+
+#### Habilitar `root_squashing` en EFS-Documentos
+
+Si todas las pruebas funcionaron correctamente, podemos suponer que ya tenemos la estructura de carpetas montadas para nuestro sistema y podemos proceder a cerrar el acceso root squashing. Para ello bastaría con **añadir** la siguiente política al EFS modificando el Resource por el ARN de nuestro EFS-Documentos:
 
 ```json
 {
@@ -516,90 +537,86 @@ Si todas las pruebas funcionaron correctamente, ya tenemos la estructura de carp
 }
 ```
 
-Una vez añadida la política, desmontamos y montamos de nuevo el EFS y veremos que, si queremos cambiar el propietario del fichero `/documentos/documentacion/infraestructura.txt` 
+Una vez añadida la política, desmontamos y montamos de nuevo el EFS y veremos que, si ahora queremos crear un el fichero `/documentos/documentacion/nuevo-test-permisos.txt` utilizando al superusuario con `sudo`, vamos a tener un error de permisos. Ejemplo del comando:
+
+```sh
+sudo touch /documentos/documentacion/nuevo-test-permisos.txt
+```
+
+La carpeta `compartida` tenía permisos 777 por lo que vamos a poder crear ficheros en ella como `root`. Fíjate también que si creamos un fichero en la carpeta y luego listamos el contenido:
+
+```sh
+# Creamos el fichero
+sudo touch /documentos/compartida/test-root-compartida.txt
+
+# Listamos el contenido de /documentos/compartida
+ls -l /documentos/compartida
+```
+
+¿Qué usuario aparece como propietario del fichero `/documentos/compartida/test-root-compartida.txt`? Debería aparecer como `nobody`. [Explicación](#por-qu-podemos-actuar-como-root-no_root_squashing-pese-a-no-dar-el-permiso-en-el-recurso).
 
 ---
 
 ### Validación de seguridad
 
-    Intentar montar EFS-Documentos desde:
-    
-    EC2-Backup01
-    
-    sudo mkdir /documentos
-    
-    sudo mount -t efs fs-DOCUMENTOS:/ /documentos
+Vamos a intentar montar `EFS-Documentos` desde `EC2-Backup01`
 
-#### Resultado esperado
+```sh
+sudo mkdir /documentos
 
-    El montaje debe fallar porque el Security Group del EFS no permite conexiones NFS desde EC2-Backup01.
-    
-    Este es uno de los objetivos de la práctica.
-    
-    ---
+sudo mount -t efs fs-DOCUMENTOS:/ /documentos
+```
 
-## Fase 6: Montar EFS-Backups
+¿Pudiste montar la carpeta? ¿Cuál es el motivo? Contesta a la pregunta relacionada en el aula virtual. `UD3 > Tareas y Evaluación > [EVALUABLE] Creación de dos EFS compartidos selectivamente entre tres instancias EC2 > Pregunta 1`
 
-### En las tres EC2
+---
 
-    Crear directorio:
-    
-    sudo mkdir /backups
-    
-    Montar:
-    
-    sudo mount -t efs fs-BACKUPS:/ /backups
-    
-    ---
+## Fase 6. Crear EFS-Backups
 
-### Prueba de compartición
+Una vez realizados los pasos anteriores, vais a realizar de **forma autónoma** el resto de la implementación. Además de las fuentes que consideréis oportunas, podéis ayudaros de la documentación oficial y de los pasos realizados con anterioridad para crear EFS-Documentos y montarlo en las máquinas cliente. Cuando en el nombre de una captura se ponga `.ext` quiere decir que será la extensión propia de la captura (Usualmente jpg o png)
 
-    Desde EC2-App01:
-    
-    echo "Backup diario" > /backups/backup_app01.sql
-    
-    Desde EC2-Backup01:
-    
-    cat /backups/backup_app01.sql
-    
-    Resultado esperado:
-    
-    Backup diario
-    
-    ---
+Implementaciones a realizar:
 
-## Fase 7: Automatizar los montajes
+1. Crear `EFS-Backups`
+   - El destino de montaje tendrá como SG asociado `SG-EFS-Backups` para permitir las conexiones tanto de las máquinas EC2-App0x como de la máquina EC2-Backup01.
 
-### En App01 y App02
+   - Las políticas de seguridad serán las siguientes:
 
-    Editar:
-    
-    sudo nano /etc/fstab
-    
-    Añadir:
-    
-    fs-DOCUMENTOS:/ /documentos efs defaults,_netdev 0 0
-    
-    fs-BACKUPS:/ /backups efs defaults,_netdev 0 0
-    
-    ---
+     - El acceso debe realizarse a través de un Mount Target (`AccessedViaMountTarget`).
 
-### En Backup01
+     - El tráfico debe ir cifrado (`tls`).
 
-    Añadir únicamente:
-    
-    fs-BACKUPS:/ /backups efs defaults,_netdev 0 0
-    
-    Observa que no debe existir ninguna entrada para EFS-Documentos.
-    
-    ---
+     - El principal autenticado debe ser el rol `LabRole` o `EMR_EC2_DefaultRole`.
 
-## Resultado esperado
+     - Ambos roles tienen permisos de montaje (`ClientMount`) y escritura (`ClientWrite`).
+2. Montar `EFS-Backups` en `EC2-App01`. Asegúrate de que también tienes montado `EFS-Documentos` en `/documentos` en esta máquina antes de realizar las tareas:
+   - Creamos carpeta /backups en la máquina
+   - Montamos la raíz de EC2-backup01 en /backups
+   - Una vez montada creamos la siguiente estructuras de carpetas:
+     - /backups/ec2-user Propietario ec2-user:ec2-user permisos 700
+     - /backups/general Propietario root:root permisos 777
+   - Una vez comprobados los permisos activamos `no_root_squashing`
+   - Como usuario ec2-user creamos los ficheros file1.txt, file2.txt en `/backups/ec2-user`. Hacemos captura del comando `ls -l /backups/ec2-user`. Nombre del fichero `01-ec2-user-ls-b-ec2.ext`
+   - Nos pasamos al usuario `documentador` e intentamos hacer `ls -l /backups/ec2-user`. Captura de la salida del comando. Nombre fichero: `02-documentador-ls-b-ec2.ext`
+   - También como documentador, creamos los ficheros `documentador1.txt` y `documentador2.txt` dentro la carpeta `/backups/general/documentador` que habremos creado previamente. Captura de la salida del comando `ls -l /backups/general/documentador`. Nombre del fichero `03-documentador-ls-general.ext`
+   - Ejecutamos el comando `sudo touch /backups/ec2-user/root-file.txt`. Captura de la salida del comando. Nombre del fichero `04-root-create-file-ec2.ext`
+   - Ejecutamos el comando `sudo touch /backups/general/root-file.txt`. Captura de la salida del comando. Nombre del fichero `05-root-create-file-general.ext`
+   - Ejecuta el comando `df -h` Captura de la salida del comando. Nombre del fichero `06-df-App01.ext`
+   - (Opcional) Modifica `/etc/fstab` para que ambos EFS se monten automáticamente cuando arrancamos el equipo. Si se hace adjuntar captura de comando `cat /etc/fstab`. Nombre del archivo: `99-Opc-fstab.ext`
+3. Montar `EFS-Backups` en `EC2-App01`. Asegúrate de que también tienes montado `EFS-Documentos` en `/documentos` en esta máquina antes de realizar las tareas:
+   - Creamos carpeta /backups en la máquina
+   - Montamos la raíz de EC2-backup01 en /backups
+   - Ejecuta el siguiente comando: `ls -l /backups`. Captura de la salida del comando. Nombre del fichero `10-backups-ls.ext`
+   - Ejecuta el siguiente comando: `ls -l /documentos`. Captura de la salida del comando. Nombre del fichero `11-documentos-ls.ext`
+4. Montar `EFS-Backups` en `EC2-Bck01`:
+   - Creamos carpeta /backups en la máquina
+   - Montamos la raíz de EC2-backup01 en /backups
+   - Ejecuta el siguiente comando: `ls -l /backups`. Captura de la salida del comando. Nombre del fichero `20-backups-ls.ext`
 
-| Instancia    | /documentos | /backups |
-| ------------ | ----------- | -------- |
-| EC2-App01    | ✅           | ✅        |
-| EC2-App02    | ✅           | ✅        |
-| EC2-Backup01 | ❌           | ✅        |
+## Formato entrega
 
-    La clave de esta práctica es que **no todos los servidores tienen acceso a todos los sistemas de archivos**, reproduciendo una situación real en la que se aplica el principio de mínimo privilegio. Esto además permite trabajar la diferencia entre compartir un EFS con toda una infraestructura o únicamente con los servidores que realmente lo necesitan.
+Fichero zip con nombre `practicaUd3-$username.zip`. Contenido:
+
+- Carpeta `capturas`: Con las capturas del paso 6
+
+- Fichero políticas-efs.documentos.json con el contenido de las políticas
