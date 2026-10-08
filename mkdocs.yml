@@ -18,4 +18,4 @@ nav:
     - Práctica 1: "Practica1.md"
     - Práctica 2: "Practica2.Ampliacion-EBS.md"
     - Práctica 3: "Practica3-EFS.md"
-    - Funcionamiento ARN Temporal STS: "anexo-sts-role.md"
+    #- Funcionamiento ARN Temporal STS: "anexo-sts-role.md"

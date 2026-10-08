@@ -235,7 +235,7 @@ Nos devolverá un resultado parecido a éste:
 }
 ```
 
-Ese ARN es un ARN temporal de STS. Si reiniciamos la consola o accedemos desde otro equipo, veremos que posiblemente el ARN haya variado. Revisa el documento "[ARN temporal de STS frente al ARN del rol IAM en EC2 y EFS](/anexo-sts-role)" para entender las implicaciones antes de seguir.
+Ese ARN es un ARN temporal de STS. Si reiniciamos la consola o accedemos desde otro equipo, veremos que posiblemente el ARN haya variado. Revisa el documento "[ARN temporal de STS frente al ARN del rol IAM en EC2 y EFS](../anexo-sts-role)" para entender las implicaciones antes de seguir.
 
 El nombre de un ARN temporal de STS sigue el siguiente formato:
 
