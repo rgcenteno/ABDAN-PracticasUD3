@@ -1,5 +1,13 @@
 # Creación de dos EFS compartidos selectivamente entre tres instancias EC2
 
+## Leer antes de empezar la práctica
+
+Esta práctica puede conllevar unos **costes elevados** ya que EFS no es un servicio barato y además se montarán 3 máquinas EC2. Es por ello que hemos habilitado un laboratorio especial para ella y así poder aislar estos costes. El laboratorio habilitado para hacer esta práctica se llama "Laboratorio UD3: Práctica 3". Está habilitado desde el 15 de Noviembre hasta más allá de la fecha de finalización de la práctica.
+
+Esta práctica está programada para las primeras semanas tras la vuelta de navidad. Podéis empezar la práctica antes si queréis. Recordad que durante el periodo no lectivo no estaré disponible para la tutorización. 
+
+Como es una práctica en la que se trabaja mucho contenido y que puede llevar bastante tiempo, se ha puesto un **plazo de entrega amplio**. Os recomiendo encarecidamente que aprovechéis el plazo y **no la dejéis para la última semana**.
+
 ## Situación empresarial
 
 La empresa **DataVision Consulting** desarrolla aplicaciones para entidades financieras y necesita centralizar la información compartida entre sus servidores.
