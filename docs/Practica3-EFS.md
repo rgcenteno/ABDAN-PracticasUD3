@@ -6,15 +6,15 @@ La empresa **DataVision Consulting** desarrolla aplicaciones para entidades fina
 
 La infraestructura está compuesta por tres instancias EC2:
 
-| Instancia    | Función                               |
-| ------------ | ------------------------------------- |
-| EC2-App01    | Aplicación principal                  |
-| EC2-App02    | Aplicación secundaria y procesamiento |
-| EC2-Backup01 | Servidor de backups y recuperación    |
+| Instancia      | Función                               |
+| -------------- | ------------------------------------- |
+| `EC2-App01`    | Aplicación principal                  |
+| `EC2-App02`    | Aplicación secundaria y procesamiento |
+| `EC2-Backup01` | Servidor de backups y recuperación    |
 
 La empresa tiene dos necesidades de almacenamiento claramente diferenciadas:
 
-#### EFS-Documentos
+#### EFS-Documentos-$username
 
 Se utilizará para almacenar:
 
@@ -25,14 +25,14 @@ Se utilizará para almacenar:
 
 Este almacenamiento solo debe ser accesible desde:
 
-- EC2-App01
-- EC2-App02
+- `EC2-App01`
+- `EC2-App02`
 
 El servidor de backups no necesita acceder a esta información.
 
 ---
 
-#### EFS-Backups
+#### EFS-Backups-$username
 
 Se utilizará para almacenar:
 
@@ -42,9 +42,9 @@ Se utilizará para almacenar:
 
 Este almacenamiento debe ser accesible desde:
 
-- EC2-App01
-- EC2-App02
-- EC2-Backup01
+- `EC2-App01`
+- `EC2-App02`
+- `EC2-Backup01`
 
 ---
 
@@ -66,49 +66,25 @@ Al finalizar la práctica deberás ser capaz de:
 
 ## Arquitectura final
 
-                +------------------+
-
-                | EFS-Documentos   |
-
-                +--------+---------+
-
-                         |
-
-              ---------------------
-
-              |                   |
-
-              |                   |
-
-         EC2-App01          EC2-App02
-
-                +------------------+
-
-                |   EFS-Backups    |
-
-                +--------+---------+
-
-                         |
-
-        ---------------------------------------
-
-        |                 |                  |
-
-        |                 |                  |
-
-   EC2-App01        EC2-App02      EC2-Backup01
+![image](imgs/practica3-arquitectura.png)
 
 ---
+
+## Fase 0: Crear LabVPC
+
+Utiliza el script que existe en la página [Introducción](../#script-que-crea-vpc-con-subred-publica-y-subred-privada) para crear una VPC con subredes pública y privada. Todas las máquinas EC2 y Sistemas EFS se montarán en esta VPC.
+
+Revisa también en la parte de Introducción que texto debes poner en vez de [$username](../#la-variable-username).
 
 ## Fase 1: Crear las instancias EC2
 
 Crear tres instancias Amazon Linux 2023:
 
-- EC2-App01
+- `EC2-App01`
 
-- EC2-App02
+- `EC2-App02`
 
-- EC2-Backup01
+- `EC2-Backup01`
 
 Con estas características
 
@@ -118,15 +94,21 @@ Con estas características
 
 - Utiliza el par de claves vockey
 
-- Establece la máquina EC2 en la VPC predeterminada. Sin preferencias en AZ y Subred.
+- Establece la máquina EC2 en la VPC `LabVPC`, subred `PublicSubnet`. Sin preferencia de AZ.
 
 - Asignación automática de IP pública: Habilitar
 
 - Deja el almacenamiento y el resto de parámetros por defecto y pulsa el botón Lanzar instancia.
 
-- Asocia a las dos primeras máquinas el rol `LabInstanceProfile` y a la máquina Backup el rol `EMR_EC2_DefaultRole`. En un **entorno real crearíamos un rol** para las máquinas con acceso a documentos y otro para la que sólo va a tener acceso a la parte de backup pero los laboratorios de AWS no nos dejan crear roles por lo que tenemos que conformarnos con los predefinidos.
+- Asocia:
 
-Todas deben pertenecer a la misma VPC y tener IP Pública. Par de claves vockey.
+  - A las máquinas `EC2-App0x` el rol `LabInstanceProfile` 
+
+  - A la máquina `EC2-Backup01` el rol `EMR_EC2_DefaultRole`.
+
+En un **entorno real crearíamos un rol** para las máquinas con acceso a documentos y otro para la que sólo va a tener acceso a la parte de backup pero **los laboratorios de AWS no nos dejan crear roles** por lo que tenemos que conformarnos con los predefinidos.
+
+- Par de claves `vockey`.
 
 ---
 
@@ -136,9 +118,9 @@ Todas deben pertenecer a la misma VPC y tener IP Pública. Par de claves vockey.
 
 Asignar a:
 
-- EC2-App01
+- `EC2-App01`
 
-- EC2-App02
+- `EC2-App02`
 
 Permitir:
 
@@ -152,7 +134,7 @@ Permitir:
 
 Asignar a:
 
-- EC2-Backup01
+- `EC2-Backup01`
 
 Permitir:
 
@@ -176,7 +158,7 @@ Origen:
 
 SG-EC2-App
 
-De esta forma únicamente las instancias App01 y App02 podrán montar este EFS.
+De esta forma únicamente las instancias `EC2-App01` y `EC2-App02` podrán montar este EFS.
 
 ---
 
@@ -190,30 +172,30 @@ Permitir:
 
 Origen:
 
-SG-EC2-App
+`SG-EC2-App`
 
-SG-EC2-Backup
+`SG-EC2-Backup`
 
-Las tres máquinas tendrán acceso.
+Con esta configuración, las tres máquinas tendrán acceso.
 
 ---
 
 ## Fase 3: Crear los sistemas EFS
 
-### Paso 5. Crear EFS-Documentos
+### Paso 5. Crear EFS-Documentos-$username
 
 #### Paso 1:
 
-- Nombre: EFS-Documentos
+- Nombre: `EFS-Documentos-$username`
 - Deshabilita las copias de seguridad automáticas para evitar cargos adicionales
 
 Resto de parámetros por defecto
 
 #### Paso 2:
 
-- Elegimos nuestra VPC y elegimos la **subred privada**. 
+- Elegimos nuestra VPC `LabVPC` y como subred `PrivateSubnet` evitando así que máquinas de fuera de AWS puedan acceder a nuestro EFS. 
 - Sólo usamos ipv4 
-- Asociamos el grupo de seguridad SG-EFS-Documentos. Con esto **securizamos a nivel de conexión el EFS**
+- Asociamos el grupo de seguridad `SG-EFS-Documentos`. Con esto **securizamos a nivel de conexión el EFS**
 
 #### Paso 3:
 
@@ -263,7 +245,7 @@ Por lo tanto de este ejemplo podemos asumir:
 
 - Cuenta: 640647244108
 
-- Rol: LabRole
+- Rol: `LabRole`
 
 - Sesión-i: i-0b15f0dfd746aa0d1
 
@@ -392,11 +374,11 @@ sudo yum install -y amazon-efs-utils
 
 ---
 
-## Fase 5: Montar EFS-Documentos
+## Fase 5: Montar EFS-Documentos-$username
 
-### ¿Qué máquinas se pueden conectar a EFS-Documentos?
+### ¿Qué máquinas se pueden conectar a EFS-Documentos-$username?
 
-- Cuando creamos el punto de acceso del EFS asociamos el grupo de seguridad SG-EFS-Documento.
+- Cuando creamos el punto de acceso del EFS asociamos el grupo de seguridad `SG-EFS-Documento`.
 
 - En las políticas del EFS hemos establecido:
 
@@ -424,9 +406,9 @@ Por lo tanto sólo nos podremos conectar desde máquinas cuyo SG sea `SG-EC2-App
 
 ### En EC2-App01 y EC2-App02
 
-Monta la carpeta raíz del `EFS-Documentos` en las máquinas `EC2-App01` y `EC2-App02`.
+Monta la carpeta raíz del `EFS-Documentos-$username` en las máquinas `EC2-App01` y `EC2-App02`.
 
-Fíjate en el punto 3.1 de este [tutorial](https://docs.aws.amazon.com/es_es/efs/latest/ug/wt1-getting-started.html) para obtener el nombre DNS del sistema `EFS-Documentos`. Como usamos `amazon-efs-utils` también podrías poner sólo el ID del EFS. Fíjate que en comando añadimos `-o tls,iam` para obligar a usar TLS en la conexión y enviar los datos del Rol IAM asociado a la instancia.
+Fíjate en el punto 3.1 de este [tutorial](https://docs.aws.amazon.com/es_es/efs/latest/ug/wt1-getting-started.html) para obtener el nombre DNS del sistema `EFS-Documentos-$username`. Como usamos `amazon-efs-utils` también podrías poner sólo el ID del EFS. Fíjate que en comando añadimos `-o tls,iam` para obligar a usar TLS en la conexión y enviar los datos del Rol IAM asociado a la instancia.
 
 > Ten en cuenta que si acabas de crear el sistema EFS es posible que tengas que esperar varios minutos para que el comando `mount`funcione incluso aunque en la consola se muestre el sistema EFS como `disponible`. Eso se debe a que las resoluciones DNS tardan varios minutos en propagarse.
 
@@ -441,9 +423,9 @@ sudo mount -t efs -o tls,iam fs-id:/ /documentos
 df -h
 ```
 
-### Creación de carpetas en EFS-Documentos y asignación de permisos a las mismas.
+### Creación de carpetas en EFS-Documentos-$username y asignación de permisos a las mismas.
 
-Desde el equipo Ec2-App01, vamos a crear una carpeta `compartida` con lectura y escritura para todo el mundo y una carpeta `documentacion` con permisos de solo lectura para todos los usuarios y de lectura escritura para el usuario local documentador que crearemos y que tendrá permisos totales sobre ella. En un entorno real el usuario documentador debería ser un usuario de un AD o LDAP corporativo.
+Desde el equipo `Ec2-App01`, vamos a crear una carpeta `compartida` con lectura y escritura para todo el mundo y una carpeta `documentacion` con permisos de solo lectura para todos los usuarios y de lectura escritura para el usuario local documentador que crearemos y que tendrá permisos totales sobre ella. En un entorno real el usuario documentador debería ser un usuario de un AD o LDAP corporativo.
 
 Además vamos a crear una carpeta compartida en la que cualquier usuario pueda leer y escribir.
 
@@ -494,7 +476,7 @@ Ahora iniciamos sesión con el usuario `ec2-user` en la máquina `Ec2-App02`
 ls -l /documentos
 ```
 
-Veremos que están la carpeta `compartida` con propietario root:root y la carpeta `documentacion` con usuario y grupo numérico. Esto es porque al ser un usuario local de la máquina Ec2-App01, no tiene la información de dicho usuario. En un entorno de Sistema en red tipo LDAP o AD veríamos correctamente el nombre.
+Veremos que están la carpeta `compartida` con propietario `root:root` y la carpeta `documentacion` con usuario y grupo numérico. Esto es porque al ser un usuario local de la máquina `Ec2-App01`, no tiene la información de dicho usuario. En un entorno de Sistema en red tipo LDAP o AD veríamos correctamente el nombre.
 
 Mostramos el contenido del fichero `/documentos/compartida/manual.txt` y que también podemos leer el fichero `/documentos/documentacion/infraestructura.txt`
 
@@ -523,9 +505,9 @@ Al estar activado el `no_root_squashing`, cualquier root de una máquina local p
 
 La recomendación habitual es habilitar el `root_squashing`. 
 
-#### Habilitar `root_squashing` en EFS-Documentos
+#### Habilitar `root_squashing` en EFS-Documentos-$username
 
-Si todas las pruebas funcionaron correctamente, podemos suponer que ya tenemos la estructura de carpetas montadas para nuestro sistema y podemos proceder a cerrar el acceso root squashing. Para ello bastaría con **añadir** la siguiente política al EFS modificando el Resource por el ARN de nuestro EFS-Documentos:
+Si todas las pruebas funcionaron correctamente, podemos suponer que ya tenemos la estructura de carpetas montadas para nuestro sistema y podemos proceder a cerrar el acceso root squashing. Para ello bastaría con **añadir** la siguiente política al EFS modificando el Resource por el ARN de nuestro `EFS-Documentos-$username`:
 
 ```json
 {
@@ -559,7 +541,7 @@ ls -l /documentos/compartida
 
 ### Validación de seguridad
 
-Vamos a intentar montar `EFS-Documentos` desde `EC2-Backup01`
+Vamos a intentar montar `EFS-Documentos-$username` desde `EC2-Backup01`
 
 ```sh
 sudo mkdir /documentos
@@ -567,17 +549,19 @@ sudo mkdir /documentos
 sudo mount -t efs fs-DOCUMENTOS:/ /documentos
 ```
 
-¿Pudiste montar la carpeta? ¿Cuál es el motivo? Contesta a la pregunta relacionada en el aula virtual. `UD3 > Tareas y Evaluación > [EVALUABLE] Creación de dos EFS compartidos selectivamente entre tres instancias EC2 > Pregunta 1`
+¿Pudiste montar la carpeta? ¿Cuál es el motivo? Explica qué cambios habría que hacer para que se pudiera realizar el montaje `respuestaQ1.txt`
 
 ---
 
-## Fase 6. Crear EFS-Backups
+## Fase 6. Crear `EFS-Backups-$username`
 
-Una vez realizados los pasos anteriores, vais a realizar de **forma autónoma** el resto de la implementación. Además de las fuentes que consideréis oportunas, podéis ayudaros de la documentación oficial y de los pasos realizados con anterioridad para crear EFS-Documentos y montarlo en las máquinas cliente. Cuando en el nombre de una captura se ponga `.ext` quiere decir que será la extensión propia de la captura (Usualmente jpg o png)
+Una vez realizados los pasos anteriores, vais a realizar de **forma autónoma** el resto de la implementación. Además de las fuentes que consideréis oportunas, podéis ayudaros de la documentación oficial y de los pasos realizados con anterioridad para crear EFS-Documentos-$username y montarlo en las máquinas cliente. Cuando en el nombre de una captura se ponga `.ext` quiere decir que será la extensión propia de la captura (Usualmente jpg o png)
 
 Implementaciones a realizar:
 
-1. Crear `EFS-Backups`
+1. Crear `EFS-Backups-$username`
+   - VPC `LabVPC`, subred `PrivateSubnet`.
+
    - El destino de montaje tendrá como SG asociado `SG-EFS-Backups` para permitir las conexiones tanto de las máquinas EC2-App0x como de la máquina EC2-Backup01.
 
    - Las políticas de seguridad serán las siguientes:
@@ -589,7 +573,7 @@ Implementaciones a realizar:
      - El principal autenticado debe ser el rol `LabRole` o `EMR_EC2_DefaultRole`.
 
      - Ambos roles tienen permisos de montaje (`ClientMount`) y escritura (`ClientWrite`).
-2. Montar `EFS-Backups` en `EC2-App01`. Asegúrate de que también tienes montado `EFS-Documentos` en `/documentos` en esta máquina antes de realizar las tareas:
+2. Montar `EFS-Backups-$username` en `EC2-App01`. Asegúrate de que también tienes montado `EFS-Documentos-$username` en `/documentos` en esta máquina antes de realizar las tareas:
    - Creamos carpeta /backups en la máquina
    - Montamos la raíz de EC2-backup01 en /backups
    - Una vez montada creamos la siguiente estructuras de carpetas:
@@ -603,12 +587,12 @@ Implementaciones a realizar:
    - Ejecutamos el comando `sudo touch /backups/general/root-file.txt`. Captura de la salida del comando. Nombre del fichero `05-root-create-file-general.ext`
    - Ejecuta el comando `df -h` Captura de la salida del comando. Nombre del fichero `06-df-App01.ext`
    - (Opcional) Modifica `/etc/fstab` para que ambos EFS se monten automáticamente cuando arrancamos el equipo. Si se hace adjuntar captura de comando `cat /etc/fstab`. Nombre del archivo: `99-Opc-fstab.ext`
-3. Montar `EFS-Backups` en `EC2-App01`. Asegúrate de que también tienes montado `EFS-Documentos` en `/documentos` en esta máquina antes de realizar las tareas:
+3. Montar `EFS-Backups-$username` en `EC2-App01`. Asegúrate de que también tienes montado `EFS-Documentos-$username` en `/documentos` en esta máquina antes de realizar las tareas:
    - Creamos carpeta /backups en la máquina
    - Montamos la raíz de EC2-backup01 en /backups
    - Ejecuta el siguiente comando: `ls -l /backups`. Captura de la salida del comando. Nombre del fichero `10-backups-ls.ext`
    - Ejecuta el siguiente comando: `ls -l /documentos`. Captura de la salida del comando. Nombre del fichero `11-documentos-ls.ext`
-4. Montar `EFS-Backups` en `EC2-Bck01`:
+4. Montar `EFS-Backups-$username` en `EC2-Bck01`:
    - Creamos carpeta /backups en la máquina
    - Montamos la raíz de EC2-backup01 en /backups
    - Ejecuta el siguiente comando: `ls -l /backups`. Captura de la salida del comando. Nombre del fichero `20-backups-ls.ext`
@@ -619,4 +603,20 @@ Fichero zip con nombre `practicaUd3-$username.zip`. Contenido:
 
 - Carpeta `capturas`: Con las capturas del paso 6
 
-- Fichero políticas-efs.documentos.json con el contenido de las políticas
+- Fichero políticas-efs-documentos.json con el contenido de las políticas del servidor EFS-Documentos-$username.
+
+- Fichero politicas-efs-backup.json con el contenido de las políticas del servidor `EFS-Backups-$username`.
+
+- Carpeta SG. Con las siguientes capturas de los siguientes Security Groups:
+
+  - Captura de listado completo de reglas seguridad. Nombre del fichero: `listado-SG.ext`
+
+  - Captura de las reglas de entrada de `SG-EC2-App`. Nombre de fichero: `SG-EC2-App.ext`
+
+  - Captura de las reglas de entrada de `SG-EC2-Backup`. Nombre de fichero: `SG-EC2-Backup.ext`
+
+  - Captura de las reglas de entrada de `SG-EFS-Backup`. Nombre de fichero: `SG-EFS-Backup.ext`
+
+  - Captura de las reglas de entrada de `SG-EFS-Documentos`. Nombre de fichero: `SG-EFS-Documentos.ext`
+
+- Fichero `respuestaQ1.txt`
