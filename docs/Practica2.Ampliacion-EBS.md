@@ -161,3 +161,5 @@ De forma análoga al apartado 4, vamos a duplicar el almacenamiento del disco de
 3. Ampliamos el sistema de archivos después de cambiar el tamaño del volumen. [Guía](https://docs.aws.amazon.com/es_es/ebs/latest/userguide/recognize-expanded-volume-linux.html?icmpid=docs_ec2_console).
 
 4. Comprueba con el comando `df -hT` que se ha ampliado correctamente el sistema de archivos.
+
+> Una vez realizada la práctica, no te olvides de eliminar los recursos que has creado en el laboratorio para evitar costes innecesarios en la cuenta.

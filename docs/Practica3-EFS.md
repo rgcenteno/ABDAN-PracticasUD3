@@ -628,3 +628,5 @@ Fichero zip con nombre `practicaUd3-$username.zip`. Contenido:
   - Captura de las reglas de entrada de `SG-EFS-Documentos`. Nombre de fichero: `SG-EFS-Documentos.ext`
 
 - Fichero `respuestaQ1.txt`
+
+> Una vez realizada la entrega, no te olvides de eliminar los recursos que has creado en el laboratorio para evitar costes innecesarios en la cuenta.
