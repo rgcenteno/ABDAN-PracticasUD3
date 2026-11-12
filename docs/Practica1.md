@@ -1,6 +1,6 @@
 # Práctica 1: Creación y montaje de un Volumen EBS
 
-Vamos a realizar una práctica en la que trabajaremos con varias fases del [ciclo de vida un disco EBS](https://docs.aws.amazon.com/es_es/ebs/latest/userguide/ebs-volume-lifecycle.html). crearemos una disco EBS que posteriormente agregaremos a una instancia EC2. Una vez vinculado el disco, le daremos formato y lo asociaremos a un punto de montaje. Modificaremos los permisos para que el usuario ec2-user tenga control completo sobre él. Una vez finalizada la operativa, modificaremos /etc/fstab para que el disco se monte automáticamente en cada arranque y haremos un par de instantáneas y restauraciones del disco. Esta práctica se hará toda en la consola de AWS.
+Vamos a realizar una práctica en la que trabajaremos con varias fases del [ciclo de vida un disco EBS](https://docs.aws.amazon.com/es_es/ebs/latest/userguide/ebs-volume-lifecycle.html). crearemos una disco EBS que posteriormente agregaremos a una instancia EC2. Una vez vinculado el disco, le daremos formato y lo asociaremos a un punto de montaje. Modificaremos los permisos para que el usuario ec2-user tenga control completo sobre él. Una vez finalizada la operativa, modificaremos /etc/fstab para que el disco se monte automáticamente en cada arranque, haremos un par de instantáneas y restauraciones del disco y, por último, automatizaremos las instantáneas con una política de **Amazon Data Lifecycle Manager (DLM)**. Esta práctica se hará toda en la consola de AWS.
 
 ![image](imgs/practica1.png)
 
@@ -47,7 +47,7 @@ cat /data/fichero1.txt
 9. Arrancamos de nuevo la máquina EC2 y una vez arrancada creamos ficheros nuevos en la carpeta `/data` donde se encuentra montado nuestra unidad EBS.
 
 ```sh
-echo "Fichero 3" > /data/fichero4.txt
+echo "Fichero 3" > /data/fichero3.txt
 echo "Fichero 4" > /data/fichero4.txt
 
 #Listamos los 4 ficheros que existen en /data
@@ -82,6 +82,83 @@ Vamos a utilizar el **segundo método** para restaurar la "Segunda instantanea".
 2. Comprueba si ha cambiado el blkid comparando el id del disco que nos da el comando `blkid` con el UUID que tenemos en `/etc/fstab`. Si ha cambiado, modifica fstab para que el nuevo volumen se remonte.
 
 3. Reinicia el sistema y comprueba que el nuevo volumen está montado.
+
+## Automatización de instantáneas con Data Lifecycle Manager
+
+Hasta ahora hemos creado las instantáneas a mano. En un entorno real las copias se programan: **Amazon Data Lifecycle Manager (DLM)** crea instantáneas automáticamente con la frecuencia que indiquemos y **borra las antiguas** cuando se supera la retención. DLM no elige los volúmenes por su ID, sino por una **etiqueta**: protegerá todos los volúmenes que la tengan.
+
+Vamos a crear una política que haga una instantánea **cada hora** del volumen montado en `/data` y conserve **las 3 últimas**.
+
+### Etiquetar el volumen
+
+1. Ve a **EC2 → Elastic Block Store → Volúmenes** y selecciona el volumen que está montado ahora en `/data` (el que creamos a partir de la "Segunda instantánea").
+
+2. Abre la pestaña **Etiquetas** y pulsa **Administrar etiquetas**.
+
+3. Pulsa **Agregar etiqueta nueva** y escribe:
+    - Clave: `backup`
+    - Valor: `practica1`
+
+4. Pulsa **Guardar**.
+
+> Las etiquetas distinguen mayúsculas y minúsculas. Escribe la clave y el valor exactamente igual en el volumen y en la política.
+
+### Crear la política de ciclo de vida
+
+1. Ve a **EC2 → Elastic Block Store → Administrador del ciclo de vida** (*Lifecycle Manager*) y pulsa **Crear política de ciclo de vida**.
+
+2. En **Seleccionar el tipo de política**, elige **Política de instantáneas de EBS** (*EBS snapshot policy*) y pulsa **Siguiente**. Si la consola te ofrece elegir entre una política predeterminada y una personalizada, elige la **personalizada**.
+
+3. En **Recursos de destino**:
+    - **Tipos de recursos de destino**: `Volumen`.
+    - **Etiquetas de recursos de destino**: clave `backup`, valor `practica1`. Pulsa **Agregar** para que la etiqueta quede añadida.
+
+4. **Descripción**: `Instantaneas cada hora - $username`.
+
+5. **Rol de IAM**: elige **Elegir otro rol** y selecciona `LabRole`.
+
+    > No elijas el **rol predeterminado**: la consola intentaría crear el rol `AWSDataLifecycleManagerDefaultRole` y el laboratorio no permite crear roles.
+
+6. **Etiquetas de la política**: añade `Name` = `dlm-$username`.
+
+7. **Estado de la política**: **Habilitar**. Pulsa **Siguiente**.
+
+8. En **Configurar la programación**, rellena los **Detalles de la programación**:
+    - **Nombre de la programación**: `Cada-hora`.
+    - **Frecuencia**: `Diaria`.
+    - **Cada**: `1 hora`.
+    - **A partir de**: la hora actual **en UTC** más 5 minutos, en formato `hh:mm`. Recuerda que la hora peninsular española es UTC+1 en invierno y UTC+2 en verano: si en España son las 17:40 en noviembre, escribe `16:45`.
+    - **Tipo de retención**: `Recuento`.
+    - **Conservar**: `3`.
+
+9. En **Etiquetado**:
+    - Marca **Copiar etiquetas del origen**, para que las instantáneas lleven la etiqueta del volumen.
+    - Pulsa **Agregar etiqueta** y añade `creado-por` = `dlm`.
+
+10. Deja **desactivadas** el resto de secciones (archivado de instantáneas, restauración rápida, copia entre regiones y uso compartido entre cuentas): generan costes adicionales que no necesitamos.
+
+11. Pulsa **Revisar política**, comprueba el resumen y pulsa **Crear política**.
+
+12. En la lista del **Administrador del ciclo de vida**, comprueba que la política aparece con estado **Habilitada**. Si aparece en estado **Error**, revisa el rol de IAM y la etiqueta y avisa al profesor.
+
+### Comprobar las instantáneas automáticas
+
+1. DLM crea la primera instantánea **dentro de la hora siguiente** a la hora de inicio, así que puede tardar. Mientras tanto, responde en el fichero `respuestas-dlm.txt`:
+    - ¿Cuál es el **RPO** (pérdida máxima de datos) que garantiza esta política?
+    - ¿Hasta qué momento del pasado podríamos volver con 3 instantáneas cada hora?
+    - ¿Qué cambiarías en la programación si la empresa pidiera poder recuperar cualquier día de la última semana con un RPO de 24 horas?
+
+2. Pasado ese tiempo, ve a **EC2 → Elastic Block Store → Instantáneas** y filtra por la etiqueta `creado-por` = `dlm`. Debe aparecer al menos una instantánea del volumen. Haz una captura llamada `dlm-instantaneas.png`.
+
+3. *(Opcional)* Si vuelves más de 3 horas después, comprueba que solo se conservan **3 instantáneas**: DLM ha borrado automáticamente las más antiguas.
+
+### Eliminar la política
+
+Cuando termines, elimina la política para que no siga creando instantáneas:
+
+1. En el **Administrador del ciclo de vida**, selecciona la política y pulsa **Acciones → Eliminar política de ciclo de vida**.
+
+2. **Eliminar la política no borra las instantáneas que ha creado.** Ve a **Instantáneas**, filtra por `creado-por` = `dlm`, selecciónalas y pulsa **Acciones → Eliminar instantánea**.
 
 ¡Felicidades! Has finalizado la práctica. 
 

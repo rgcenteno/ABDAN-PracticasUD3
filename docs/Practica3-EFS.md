@@ -195,7 +195,12 @@ Con esta configuración, las tres máquinas tendrán acceso.
 #### Paso 1:
 
 - Nombre: `EFS-Documentos-$username`
+- Tipo de sistema de archivos: `Regional`
 - Deshabilita las copias de seguridad automáticas para evitar cargos adicionales
+- Administración del ciclo de vida:
+    - Transición a IA (*Infrequent Access*): `60 días desde el último acceso`
+    - Transición a archivo (*Archive*): `180 días desde el último acceso`
+    - Transición a estándar (*Standard*): `En el primer acceso`
 
 Resto de parámetros por defecto
 
@@ -359,7 +364,9 @@ Según la [documentación de red y permisos de Amazon EFS](https://docs.aws.amaz
 
 Esto significa que Amazon EFS trata nativamente a cualquier usuario con UID 0 (root) como el usuario administrador raíz y se salta las comprobaciones de permisos. 
 
-Para activar el `root squashing` (es decir, degradar al usuario root a un usuario anónimo sin privilegios), debemoss quitarle explícitamente el permiso `elasticfilesystem:ClientRootAccess`.
+Para activar el `root squashing` (es decir, degradar al usuario root a un usuario anónimo sin privilegios), debemos quitarle explícitamente el permiso `elasticfilesystem:ClientRootAccess`.
+
+¿Y por qué no basta con que nuestra política no conceda `ClientRootAccess`? Porque EFS concede un permiso si lo permite **cualquiera de las dos políticas**: la política del sistema de archivos **o** la política de IAM de la identidad que monta. La política de IAM del rol `LabRole` concede permisos amplios sobre EFS, entre ellos `ClientRootAccess`. Por eso, aunque nuestra política no lo incluya, las máquinas con `LabRole` siguen actuando como root. La única forma de quitárselo es un **`Deny` explícito**, que siempre prevalece sobre cualquier `Allow`.
 
 | Configuración en el Servidor                      | Usuario en el Cliente | UID enviado | UID con el que se escribe en el Servidor | ¿Tiene control total?                                     |
 | ------------------------------------------------- | --------------------- | ----------- | ---------------------------------------- | --------------------------------------------------------- |
@@ -386,7 +393,7 @@ sudo yum install -y amazon-efs-utils
 
 ### ¿Qué máquinas se pueden conectar a EFS-Documentos-$username?
 
-- Cuando creamos el punto de acceso del EFS asociamos el grupo de seguridad `SG-EFS-Documento`.
+- Cuando creamos el destino de montaje del EFS asociamos el grupo de seguridad `SG-EFS-Documentos`.
 
 - En las políticas del EFS hemos establecido:
 
